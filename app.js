@@ -11,6 +11,7 @@ let currentRoomCode = null;
 let otherPlayerId = null;
 let boardSize = 16; // Por defecto 4x4
 let isHost = false; // Rastrear si es el creador de la sala
+let playerReadyHandled = false; // Evitar disparar player-ready múltiples veces
 
 // --- CONEXIÓN ---
 socket.on('connect', () => {
@@ -40,20 +41,20 @@ socket.on('room-joined', (data) => {
 });
 
 socket.on('player-ready', (data) => {
+    if (playerReadyHandled) return; // Evitar ejecutar múltiples veces
+    playerReadyHandled = true;
+    
     otherPlayerId = data.playerId;
     console.log('✓ Otro jugador conectado');
     document.getElementById('connection-status').innerText = '✓ ¡Conectado!';
     
     setTimeout(() => {
         document.getElementById('rooms-screen').classList.add('hidden');
+        document.getElementById('board-size-screen').classList.remove('hidden');
         
         if (isHost) {
-            // Solo el host elige el tamaño
-            document.getElementById('board-size-screen').classList.remove('hidden');
             updateStatus('Elige el tamaño del tablero');
         } else {
-            // Los demás esperan que el host elija
-            document.getElementById('board-size-screen').classList.remove('hidden');
             showBoardSizeWaitingUI();
         }
     }, 500);
@@ -148,6 +149,7 @@ function chooseRole(role) {
     
     myRole = role;
     gameActive = true;
+    
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
     
@@ -171,15 +173,18 @@ function chooseBoardSize(size) {
     const sizeMap = { 'small': 16, 'medium': 36, 'large': 64 };
     boardSize = sizeMap[size];
     
-    document.getElementById('board-size-screen').classList.add('hidden');
-    document.getElementById('setup-screen').classList.remove('hidden');
-    updateStatus('¡Elige tu rol!');
-    
     // Notificar al otro jugador el tamaño
     socket.emit('board-size', { 
         roomCode: currentRoomCode, 
         boardSize: boardSize 
     });
+    
+    // Pasar a selección de rol
+    setTimeout(() => {
+        document.getElementById('board-size-screen').classList.add('hidden');
+        document.getElementById('setup-screen').classList.remove('hidden');
+        updateStatus('¡Elige tu rol!');
+    }, 300);
 }
 
 socket.on('board-size', (data) => {
@@ -190,6 +195,14 @@ socket.on('board-size', (data) => {
 socket.on('board-size-set', (data) => {
     boardSize = data.boardSize;
     console.log('Host eligió tamaño:', boardSize);
+    
+    // Limpiar mensaje de espera si existe
+    const waitMessage = document.getElementById('wait-message');
+    if (waitMessage) waitMessage.remove();
+    
+    // Habilitar botones de nuevo
+    const buttons = document.querySelectorAll('.board-size-options button');
+    buttons.forEach(btn => btn.disabled = false);
     
     // Pasar a selección de rol
     setTimeout(() => {
