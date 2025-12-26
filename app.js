@@ -26,20 +26,15 @@ socket.on('connect', () => {
     console.log('✓ Conectado al servidor');
 });
 
-socket.on('player-joined', (data) => {
-    console.log('✓ Otro jugador llegó:', data.playerId);
-    // Intentar conectar con PeerJS
-    if (myPeerId) {
+socket.on('peer-id', (data) => {
+    console.log('✓ Recibido PeerJS ID del otro jugador:', data.peerId);
+    if (data.peerId !== myPeerId && !conn) {
         setTimeout(() => {
-            conn = peer.connect(data.playerId);
+            console.log('📞 Conectando con PeerJS a:', data.peerId);
+            conn = peer.connect(data.peerId);
             setupConnection();
         }, 500);
     }
-});
-
-socket.on('game-message', (message) => {
-    // Este evento se usa si Socket.io transmite mensajes del juego
-    console.log('Mensaje recibido:', message);
 });
 
 socket.on('disconnect', () => {
@@ -69,6 +64,11 @@ async function createRoom() {
     socket.emit('create-room', {}, (data) => {
         if (data.success) {
             currentRoomCode = data.roomCode;
+            // Enviar tu PeerJS ID
+            socket.emit('send-peer-id', { 
+                roomCode: data.roomCode, 
+                peerId: myPeerId 
+            });
             showRoomUI(data.roomCode, true);
             console.log('✓ Sala creada:', data.roomCode);
         }
@@ -91,11 +91,12 @@ async function joinRoom() {
             currentRoomCode = roomCode;
             
             console.log('✓ Unido a sala:', roomCode);
-            console.log('✓ Conectando con host:', data.hostId);
             
-            // Conectar con PeerJS al host
-            conn = peer.connect(data.hostId);
-            setupConnection();
+            // Enviar tu PeerJS ID al host
+            socket.emit('send-peer-id', { 
+                roomCode: roomCode, 
+                peerId: myPeerId 
+            });
             
             showRoomUI(roomCode, false);
         } else {
@@ -130,7 +131,7 @@ function showJoinRoomForm() {
 // --- SALIR DE SALA ---
 function leaveRoom() {
     if (conn) conn.close();
-    socket.emit('disconnect');
+    socket.disconnect();
     location.reload();
 }
 

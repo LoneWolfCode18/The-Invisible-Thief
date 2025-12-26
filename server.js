@@ -86,14 +86,26 @@ io.on('connection', (socket) => {
 
         console.log(`✓ Usuario se unió: ${socket.id} a sala ${roomCode}`);
         
-        // Notificar al host que llegó alguien
-        io.to(room.hostId).emit('player-joined', { playerId: socket.id });
-        
         callback({ 
             success: true, 
-            hostId: room.hostId, 
             roomCode 
         });
+    });
+
+    // Intercambiar PeerJS IDs
+    socket.on('send-peer-id', (data) => {
+        const { roomCode, peerId } = data;
+        const room = rooms[roomCode];
+        
+        if (room) {
+            // Enviar el PeerJS ID a los otros jugadores en la sala
+            room.players.forEach(playerId => {
+                if (playerId !== socket.id) {
+                    io.to(playerId).emit('peer-id', { peerId });
+                }
+            });
+            console.log(`📍 PeerJS ID compartido en sala ${roomCode}: ${peerId}`);
+        }
     });
 
     // Mensajes de juego
@@ -110,21 +122,6 @@ io.on('connection', (socket) => {
             });
         }
     });
-
-    // Desconexión
-    socket.on('disconnect', () => {
-        console.log(`✗ Usuario desconectado: ${socket.id}`);
-        
-        // Limpiar salas
-        for (const [roomCode, room] of Object.entries(rooms)) {
-            if (room.players.includes(socket.id)) {
-                delete rooms[roomCode];
-                console.log(`✗ Sala cerrada: ${roomCode}`);
-            }
-        }
-        delete userSockets[socket.id];
-    });
-});
 
 function generateRoomCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
