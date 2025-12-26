@@ -10,6 +10,7 @@ let gameActive = false;
 let currentRoomCode = null;
 let otherPlayerId = null;
 let boardSize = 16; // Por defecto 4x4
+let isHost = false; // Rastrear si es el creador de la sala
 
 // --- CONEXIÓN ---
 socket.on('connect', () => {
@@ -25,12 +26,14 @@ socket.on('disconnect', () => {
 // --- EVENTOS DE SALA ---
 socket.on('room-created', (data) => {
     currentRoomCode = data.roomCode;
+    isHost = data.isHost;
     showRoomUI(data.roomCode, true);
     console.log('✓ Sala creada:', data.roomCode);
 });
 
 socket.on('room-joined', (data) => {
     currentRoomCode = data.roomCode;
+    isHost = data.isHost;
     showRoomUI(data.roomCode, false);
     console.log('✓ Unido a sala:', data.roomCode);
     console.log('✓ Esperando al otro jugador...');
@@ -43,8 +46,16 @@ socket.on('player-ready', (data) => {
     
     setTimeout(() => {
         document.getElementById('rooms-screen').classList.add('hidden');
-        document.getElementById('board-size-screen').classList.remove('hidden');
-        updateStatus('Elige el tamaño del tablero');
+        
+        if (isHost) {
+            // Solo el host elige el tamaño
+            document.getElementById('board-size-screen').classList.remove('hidden');
+            updateStatus('Elige el tamaño del tablero');
+        } else {
+            // Los demás esperan que el host elija
+            document.getElementById('board-size-screen').classList.remove('hidden');
+            showBoardSizeWaitingUI();
+        }
     }, 500);
 });
 
@@ -133,6 +144,8 @@ function leaveRoom() {
 
 // --- ELEGIR ROL ---
 function chooseRole(role) {
+    if (!isHost) return; // Solo el host puede elegir el rol
+    
     myRole = role;
     gameActive = true;
     document.getElementById('setup-screen').classList.add('hidden');
@@ -153,6 +166,8 @@ function chooseRole(role) {
 
 // --- ELEGIR TAMAÑO DE TABLERO ---
 function chooseBoardSize(size) {
+    if (!isHost) return; // Solo el host puede elegir
+    
     const sizeMap = { 'small': 16, 'medium': 36, 'large': 64 };
     boardSize = sizeMap[size];
     
@@ -170,6 +185,37 @@ function chooseBoardSize(size) {
 socket.on('board-size', (data) => {
     boardSize = data.boardSize;
     console.log('Tamaño de tablero:', boardSize);
+});
+
+socket.on('board-size-set', (data) => {
+    boardSize = data.boardSize;
+    console.log('Host eligió tamaño:', boardSize);
+    
+    // Pasar a selección de rol
+    setTimeout(() => {
+        document.getElementById('board-size-screen').classList.add('hidden');
+        document.getElementById('setup-screen').classList.remove('hidden');
+        showRoleSelectionWaitingUI();
+        updateStatus('Host está eligiendo rol...');
+    }, 500);
+});
+
+socket.on('host-role-selected', (data) => {
+    const hostRole = data.role;
+    console.log('Host eligió rol:', hostRole);
+    
+    // Asignar el rol opuesto al cliente
+    myRole = hostRole === 'thief' ? 'detective' : 'thief';
+    gameActive = true;
+    
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+    
+    const badge = myRole === 'thief' ? '🥷 LADRÓN' : '🕵️ DETECTIVE';
+    document.getElementById('player-role-badge').innerText = badge;
+    
+    updateStatus(myRole === 'thief' ? 'Elige escondite' : 'Esperando...');
+    createBoard();
 });
 
 // --- CREAR TABLERO ---
@@ -264,4 +310,42 @@ function showEndGameScreen(title, message) {
         document.getElementById('end-game-title').innerText = title;
         document.getElementById('end-game-message').innerText = message;
     }, 1000);
+}
+
+// --- UI DE ESPERA PARA SELECCIÓN DE TAMAÑO ---
+function showBoardSizeWaitingUI() {
+    const boardSizeScreen = document.getElementById('board-size-screen');
+    const options = boardSizeScreen.querySelector('.board-size-options');
+    
+    // Deshabilitar todos los botones
+    const buttons = options.querySelectorAll('button');
+    buttons.forEach(btn => btn.disabled = true);
+    
+    // Agregar mensaje de espera
+    const waitMessage = document.createElement('p');
+    waitMessage.id = 'wait-message';
+    waitMessage.style.marginTop = '1rem';
+    waitMessage.style.textAlign = 'center';
+    waitMessage.style.color = '#a0aec0';
+    waitMessage.innerText = '⏳ Esperando que el host elija el tamaño...';
+    boardSizeScreen.appendChild(waitMessage);
+}
+
+// --- UI DE ESPERA PARA SELECCIÓN DE ROL ---
+function showRoleSelectionWaitingUI() {
+    const setupScreen = document.getElementById('setup-screen');
+    const roleSelection = setupScreen.querySelector('.role-selection');
+    
+    // Deshabilitar todos los botones
+    const buttons = roleSelection.querySelectorAll('button');
+    buttons.forEach(btn => btn.disabled = true);
+    
+    // Agregar mensaje de espera
+    const waitMessage = document.createElement('p');
+    waitMessage.id = 'wait-message-role';
+    waitMessage.style.marginTop = '1rem';
+    waitMessage.style.textAlign = 'center';
+    waitMessage.style.color = '#a0aec0';
+    waitMessage.innerText = '⏳ Esperando que el host elija el rol...';
+    setupScreen.appendChild(waitMessage);
 }

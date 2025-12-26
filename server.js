@@ -55,7 +55,7 @@ io.on('connection', (socket) => {
         };
         
         socket.join(roomCode);
-        socket.emit('room-created', { roomCode });
+        socket.emit('room-created', { roomCode, isHost: true });
         
         console.log(`✓ Sala creada: ${roomCode}`);
     });
@@ -77,9 +77,9 @@ io.on('connection', (socket) => {
 
         room.players.push(socket.id);
         socket.join(roomCode);
-        socket.emit('room-joined', { roomCode });
+        socket.emit('room-joined', { roomCode, isHost: false });
         
-        // Notificar al host
+        // Notificar al host que alguien se unió
         io.to(room.hostId).emit('player-ready', { playerId: socket.id });
         
         console.log(`✓ Se unió: ${socket.id} a sala ${roomCode}`);
@@ -87,13 +87,20 @@ io.on('connection', (socket) => {
 
     // Jugador listo
     socket.on('player-ready', (data) => {
-        const { roomCode } = data;
+        const { roomCode, role } = data;
         const room = rooms[roomCode];
         
         if (room) {
+            // Guardar el rol del jugador
+            if (!room.playerRoles) {
+                room.playerRoles = {};
+            }
+            room.playerRoles[socket.id] = role;
+            
+            // Notificar al otro jugador
             room.players.forEach(playerId => {
                 if (playerId !== socket.id) {
-                    io.to(playerId).emit('player-ready', { playerId: socket.id });
+                    io.to(playerId).emit('host-role-selected', { role: role });
                 }
             });
         }
@@ -148,9 +155,10 @@ io.on('connection', (socket) => {
         
         if (room) {
             room.boardSize = boardSize;
+            // Notificar al otro jugador del tamaño elegido
             room.players.forEach(playerId => {
                 if (playerId !== socket.id) {
-                    io.to(playerId).emit('board-size', { boardSize });
+                    io.to(playerId).emit('board-size-set', { boardSize });
                 }
             });
         }
