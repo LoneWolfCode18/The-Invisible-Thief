@@ -3,7 +3,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 
 const server = http.createServer((req, res) => {
     // Ruta por defecto
@@ -44,6 +44,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`🎮 Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`🎮 Servidor corriendo en puerto ${PORT}`);
+    console.log(`📍 Accede en: http://localhost:${PORT}`);
     console.log('Presiona Ctrl+C para detener el servidor');
 });

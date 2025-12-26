@@ -1,0 +1,21 @@
+{
+  "name": "invisible-thief",
+  "version": "1.0.0",
+  "description": "Juego multiplayer en línea: Invisible Thief",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "p2p",
+    "peerjs"
+  ],
+  "author": "Marcus",
+  "license": "MIT",
+  "engines": {
+    "node": "18.x"
+  }
+}
