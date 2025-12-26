@@ -1,100 +1,43 @@
-// === INVISIBLE THIEF - MULTIPLAYER CON SALAS ===
-// Sistema de salas usando Firebase Realtime Database
+// === INVISIBLE THIEF - MULTIPLAYER CON SALAS FUNCIONALES ===
 
-// --- CONFIGURACIÓN DE FIREBASE ---
-const firebaseConfig = {
-    apiKey: "AIzaSyCj_W2mxX1ZxQ9K0p9mK3X5L8N9O0P1Q2R",
-    authDomain: "invisible-thief-game.firebaseapp.com",
-    databaseURL: "https://invisible-thief-game-default-rtdb.firebaseio.com",
-    projectId: "invisible-thief-game",
-    storageBucket: "invisible-thief-game.appspot.com",
-    messagingSenderId: "123456789012",
-    appId: "1:123456789012:web:abcdef123456789abcdef"
-};
-
-// Inicializar Firebase (si no está disponible, usaremos localStorage)
-let db = null;
-const useFirebase = false; // Cambiar a true si configuras Firebase
-
-// --- CONFIGURACIÓN DE RED (PeerJS) ---
 const peer = new Peer();
 let conn = null;
-
-// --- ESTADO DEL JUEGO ---
-let myRole = null;
 let myPeerId = null;
+let myRole = null;
 let thiefPos = null;
 let turn = 'thief';
 let gameActive = false;
 let currentRoomCode = null;
-let isRoomHost = false;
 
-// --- SALAS (Sistema Local) ---
-const rooms = {}; // roomCode => { hostId, playerIds: [], status }
-
-// --- INICIALIZACIÓN PEERJS ---
+// --- INICIALIZACIÓN ---
 peer.on('open', (id) => {
     myPeerId = id;
     document.getElementById('my-id').innerText = id;
-    console.log('Mi ID de PeerJS:', id);
+    console.log('Mi ID:', id);
 });
 
 peer.on('connection', (c) => {
     conn = c;
     setupConnection();
-    updateStatus('¡Jugador conectado! Ambos pueden elegir rol.');
 });
 
-// --- GENERAR CÓDIGO DE SALA ---
-function generateRoomCode() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-}
-
 // --- CREAR SALA ---
-function createRoom() {
-    const roomCode = generateRoomCode();
-    currentRoomCode = roomCode;
-    isRoomHost = true;
+async function createRoom() {
+    const response = await fetch('/api/create-room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peerId: myPeerId, playerName: 'Jugador' })
+    });
     
-    // Crear sala local
-    rooms[roomCode] = {
-        hostId: myPeerId,
-        playerIds: [myPeerId],
-        status: 'waiting',
-        createdAt: new Date().getTime()
-    };
+    const data = await response.json();
+    currentRoomCode = data.roomCode;
     
-    // Mostrar UI
-    document.getElementById('rooms-screen').innerHTML = `
-        <div id="active-room">
-            <h3>Sala Creada: <strong>${roomCode}</strong></h3>
-            <p style="color: #38bdf8; font-size: 1.1rem; margin: 1rem 0;">
-                📋 Código de Sala: <strong>${roomCode}</strong>
-            </p>
-            <p>Comparte este código con tu amigo para que se una.</p>
-            <p style="color: #a0a0a0; font-size: 0.9rem; margin-top: 1rem;">
-                Esperando otro jugador...
-            </p>
-            <button onclick="leaveRoom()" class="btn-danger" style="margin-top: 1rem;">Cancelar Sala</button>
-        </div>
-    `;
-    
-    console.log('Sala creada:', roomCode);
-}
-
-// --- MOSTRAR FORMULARIO PARA UNIRSE ---
-function showJoinRoomForm() {
-    const form = document.getElementById('join-room-form');
-    form.classList.toggle('hidden');
+    showRoomUI(data.roomCode, true);
+    console.log('Sala creada:', data.roomCode);
 }
 
 // --- UNIRSE A SALA ---
-function joinRoom() {
+async function joinRoom() {
     const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
     
     if (!roomCode) {
@@ -102,116 +45,110 @@ function joinRoom() {
         return;
     }
     
-    if (!rooms[roomCode]) {
-        alert('Sala no encontrada. Verifica el código.');
+    const response = await fetch('/api/join-room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomCode, peerId: myPeerId })
+    });
+    
+    if (!response.ok) {
+        const error = await response.json();
+        alert('Error: ' + error.error);
         return;
     }
     
-    const room = rooms[roomCode];
-    if (room.playerIds.length >= 2) {
-        alert('La sala está llena');
-        return;
-    }
-    
-    // Unirse a la sala
+    const data = await response.json();
     currentRoomCode = roomCode;
-    room.playerIds.push(myPeerId);
     
     // Conectar con el host
-    const hostId = room.hostId;
-    if (hostId !== myPeerId) {
-        conn = peer.connect(hostId);
-        setupConnection();
-    }
+    conn = peer.connect(data.hostId);
+    setupConnection();
     
-    // Actualizar UI
-    document.getElementById('rooms-screen').innerHTML = `
-        <div id="active-room">
-            <h3>Unido a Sala: <strong>${roomCode}</strong></h3>
-            <p>Conectando con el otro jugador...</p>
-            <button onclick="leaveRoom()" class="btn-danger">Salir de Sala</button>
-        </div>
-    `;
-    
+    showRoomUI(roomCode, false);
     console.log('Unido a sala:', roomCode);
 }
 
-// --- ABANDONAR SALA ---
+// --- UI DE SALA ---
+function showRoomUI(roomCode, isHost) {
+    document.getElementById('rooms-screen').innerHTML = `
+        <div id="active-room">
+            <h3>Código de Sala</h3>
+            <div style="background: #0f141a; padding: 1rem; border-radius: 8px; border: 2px solid var(--accent); margin: 1rem 0;">
+                <p style="font-size: 2rem; margin: 0; color: var(--success); font-weight: bold; font-family: monospace;">
+                    ${roomCode}
+                </p>
+            </div>
+            ${isHost ? '<p>Comparte este código con tu amigo</p>' : '<p>Conectando con el host...</p>'}
+            <button onclick="leaveRoom()" class="btn-danger" style="margin-top: 1rem;">Salir</button>
+        </div>
+    `;
+}
+
+// --- MOSTRAR FORMULARIO ---
+function showJoinRoomForm() {
+    const form = document.getElementById('join-room-form');
+    form.classList.toggle('hidden');
+}
+
+// --- SALIR DE SALA ---
 function leaveRoom() {
-    if (currentRoomCode && rooms[currentRoomCode]) {
-        delete rooms[currentRoomCode];
-    }
-    
-    if (conn) {
-        conn.close();
-        conn = null;
-    }
-    
+    if (conn) conn.close();
+    conn = null;
     currentRoomCode = null;
-    isRoomHost = false;
     myRole = null;
     gameActive = false;
-    
-    // Volver a pantalla de salas
     location.reload();
 }
 
-// --- CONFIGURAR CONEXIÓN ---
+// --- CONFIGURAR CONEXIÓN P2P ---
 function setupConnection() {
     conn.on('open', () => {
-        console.log('Conexión P2P establecida');
-        updateStatus('¡Jugador conectado! Ahora elige tu rol.');
-        
-        // Mostrar pantalla de rol
+        console.log('Conectado al otro jugador');
         document.getElementById('rooms-screen').classList.add('hidden');
         document.getElementById('setup-screen').classList.remove('hidden');
+        updateStatus('¡Conexión establecida! Elige tu rol.');
     });
 
     conn.on('data', (data) => {
         if (data.type === 'move') {
             thiefPos = data.pos;
             turn = 'detective';
-            updateStatus('¡Ladrón escondido! Tu turno, Detective 🕵️‍♂️');
+            updateStatus('¡Ladrón escondido! Tu turno 🕵️‍♂️');
         } 
         else if (data.type === 'guess') {
             const dist = calculateDistance(data.index, thiefPos);
             conn.send({ type: 'result', index: data.index, dist: dist });
             
             if (dist === 0) {
-                updateStatus('¡TE ATRAPARON! Game Over 😱');
+                updateStatus('¡ATRAPADO! 😱');
                 gameActive = false;
             } else {
-                updateStatus(`¡Fallaste! (Distancia: ${dist})`);
+                updateStatus(`Falló (distancia: ${dist})`);
                 turn = 'thief';
             }
         }
         else if (data.type === 'result') {
             showGuessResult(data.index, data.dist);
             if (data.dist === 0) {
-                updateStatus('¡ATRAPASTE AL LADRÓN! 🎉');
+                updateStatus('¡GANASTE! 🎉');
                 gameActive = false;
             } else {
-                updateStatus(`Distancia: ${data.dist}. Espera su movimiento...`);
+                updateStatus(`Distancia: ${data.dist}`);
                 turn = 'thief';
             }
         }
     });
 
     conn.on('error', (err) => {
-        console.error('Error de conexión:', err);
-        updateStatus('Error en la conexión');
-    });
-
-    conn.on('close', () => {
-        console.log('Conexión cerrada');
-        updateStatus('Conexión perdida');
+        console.error('Error:', err);
+        updateStatus('Error de conexión');
     });
 }
 
 // --- ELEGIR ROL ---
 function chooseRole(role) {
     if (!conn || !conn.open) {
-        alert('No hay conexión con el otro jugador');
+        alert('No hay conexión');
         return;
     }
     
@@ -223,14 +160,7 @@ function chooseRole(role) {
     const badge = role === 'thief' ? '🥷 LADRÓN' : '🕵️ DETECTIVE';
     document.getElementById('player-role-badge').innerText = badge;
     
-    if (role === 'thief') {
-        updateStatus('Elige tu escondite inicial');
-        turn = 'thief';
-    } else {
-        updateStatus('Espera a que el ladrón se esconda...');
-        turn = 'thief';
-    }
-    
+    updateStatus(role === 'thief' ? 'Elige escondite' : 'Esperando...');
     createBoard();
 }
 
@@ -248,46 +178,41 @@ function createBoard() {
     }
 }
 
-// --- MANEJAR CLICK EN CELDA ---
+// --- CLICK EN CELDA ---
 function handleCellClick(idx) {
     if (!gameActive || !conn || !conn.open) return;
     
     if (myRole === 'thief' && turn === 'thief') {
         thiefPos = idx;
-        
         document.querySelectorAll('.cell').forEach(c => c.classList.remove('thief-here'));
         document.querySelector(`[data-index="${idx}"]`).classList.add('thief-here');
-        
         conn.send({ type: 'move', pos: idx });
-        
         turn = 'detective';
-        updateStatus('¡Te escondiste! Espera el disparo del detective...');
+        updateStatus('¡Escondido! Espera disparo...');
     } 
     else if (myRole === 'detective' && turn === 'detective') {
         conn.send({ type: 'guess', index: idx });
-        updateStatus('Disparaste... esperando resultado...');
+        updateStatus('¡Disparo!');
         turn = 'thief';
     }
 }
 
-// --- CALCULAR DISTANCIA ---
+// --- DISTANCIA ---
 function calculateDistance(idx1, idx2) {
     const x1 = idx1 % 4, y1 = Math.floor(idx1 / 4);
     const x2 = idx2 % 4, y2 = Math.floor(idx2 / 4);
     return Math.abs(x1 - x2) + Math.abs(y1 - y2);
 }
 
-// --- MOSTRAR RESULTADO ---
+// --- RESULTADO ---
 function showGuessResult(idx, dist) {
     const cell = document.querySelector(`[data-index="${idx}"]`);
     cell.classList.add('guessed');
     cell.textContent = dist;
 }
 
-// --- ACTUALIZAR ESTADO ---
+// --- ESTADO ---
 function updateStatus(msg) {
-    const element = document.getElementById('game-status');
-    if (element) {
-        element.innerText = msg;
-    }
+    const el = document.getElementById('game-status');
+    if (el) el.innerText = msg;
 }
