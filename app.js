@@ -1,6 +1,17 @@
 // === INVISIBLE THIEF - MULTIPLAYER CON SALAS FUNCIONALES ===
 
-const peer = new Peer();
+// Configuración de PeerJS con servidores STUN/TURN
+const peerConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+    ]
+};
+
+const peer = new Peer({ config: peerConfig });
 let conn = null;
 let myPeerId = null;
 let myRole = null;
@@ -13,12 +24,18 @@ let currentRoomCode = null;
 peer.on('open', (id) => {
     myPeerId = id;
     document.getElementById('my-id').innerText = id;
-    console.log('Mi ID:', id);
+    console.log('✓ Conectado a PeerJS con ID:', id);
 });
 
 peer.on('connection', (c) => {
+    console.log('✓ Conexión entrante recibida');
     conn = c;
     setupConnection();
+});
+
+peer.on('error', (err) => {
+    console.error('❌ Error de PeerJS:', err);
+    updateStatus('Error: ' + err.message);
 });
 
 // --- CREAR SALA ---
@@ -45,27 +62,42 @@ async function joinRoom() {
         return;
     }
     
-    const response = await fetch('/api/join-room', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomCode, peerId: myPeerId })
-    });
+    updateStatus('Conectando a sala...');
     
-    if (!response.ok) {
-        const error = await response.json();
-        alert('Error: ' + error.error);
-        return;
+    try {
+        const response = await fetch('/api/join-room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomCode, peerId: myPeerId })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            alert('Error: ' + error.error);
+            updateStatus('Error al unirse a sala');
+            return;
+        }
+        
+        const data = await response.json();
+        currentRoomCode = roomCode;
+        
+        console.log('Conectando con host:', data.hostId);
+        
+        // Conectar con el host
+        conn = peer.connect(data.hostId, { reliable: true });
+        
+        conn.on('error', (err) => {
+            console.error('Error al conectar:', err);
+            updateStatus('❌ Error: No se pudo conectar con el host');
+        });
+        
+        setupConnection();
+        showRoomUI(roomCode, false);
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error de red');
+        updateStatus('Error de conexión');
     }
-    
-    const data = await response.json();
-    currentRoomCode = roomCode;
-    
-    // Conectar con el host
-    conn = peer.connect(data.hostId);
-    setupConnection();
-    
-    showRoomUI(roomCode, false);
-    console.log('Unido a sala:', roomCode);
 }
 
 // --- UI DE SALA ---
@@ -103,10 +135,10 @@ function leaveRoom() {
 // --- CONFIGURAR CONEXIÓN P2P ---
 function setupConnection() {
     conn.on('open', () => {
-        console.log('Conectado al otro jugador');
+        console.log('✓ Conexión P2P establecida');
         document.getElementById('rooms-screen').classList.add('hidden');
         document.getElementById('setup-screen').classList.remove('hidden');
-        updateStatus('¡Conexión establecida! Elige tu rol.');
+        updateStatus('¡Conectado! Elige tu rol.');
     });
 
     conn.on('data', (data) => {
@@ -140,8 +172,13 @@ function setupConnection() {
     });
 
     conn.on('error', (err) => {
-        console.error('Error:', err);
-        updateStatus('Error de conexión');
+        console.error('❌ Error en conexión:', err);
+        updateStatus('Error en la conexión P2P');
+    });
+
+    conn.on('close', () => {
+        console.log('⚠️ Conexión cerrada');
+        updateStatus('Conexión perdida');
     });
 }
 
