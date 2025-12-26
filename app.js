@@ -1,56 +1,78 @@
-// === INVISIBLE THIEF - MULTIPLAYER CON SALAS FUNCIONALES ===
+// === INVISIBLE THIEF - MULTIPLAYER FUNCIONAL ===
 
-// Configuración de PeerJS con servidores STUN/TURN
+// Socket.io para señalización
+const socket = io();
+
+// PeerJS para conexión P2P
 const peerConfig = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' }
     ]
 };
-
 const peer = new Peer({ config: peerConfig });
-let conn = null;
+
+// Estado del juego
 let myPeerId = null;
+let conn = null;
 let myRole = null;
 let thiefPos = null;
 let turn = 'thief';
 let gameActive = false;
 let currentRoomCode = null;
 
-// --- INICIALIZACIÓN ---
+// --- SOCKET.IO EVENTS ---
+socket.on('connect', () => {
+    console.log('✓ Conectado al servidor');
+});
+
+socket.on('player-joined', (data) => {
+    console.log('✓ Otro jugador llegó:', data.playerId);
+    // Intentar conectar con PeerJS
+    if (myPeerId) {
+        setTimeout(() => {
+            conn = peer.connect(data.playerId);
+            setupConnection();
+        }, 500);
+    }
+});
+
+socket.on('game-message', (message) => {
+    // Este evento se usa si Socket.io transmite mensajes del juego
+    console.log('Mensaje recibido:', message);
+});
+
+socket.on('disconnect', () => {
+    console.log('✗ Desconectado del servidor');
+    if (conn) conn.close();
+});
+
+// --- PEERJS EVENTS ---
 peer.on('open', (id) => {
     myPeerId = id;
     document.getElementById('my-id').innerText = id;
-    console.log('✓ Conectado a PeerJS con ID:', id);
+    console.log('✓ PeerJS ID:', id);
 });
 
 peer.on('connection', (c) => {
-    console.log('✓ Conexión entrante recibida');
+    console.log('✓ Conexión P2P recibida');
     conn = c;
     setupConnection();
 });
 
 peer.on('error', (err) => {
-    console.error('❌ Error de PeerJS:', err);
-    updateStatus('Error: ' + err.message);
+    console.error('❌ Error PeerJS:', err);
 });
 
 // --- CREAR SALA ---
 async function createRoom() {
-    const response = await fetch('/api/create-room', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ peerId: myPeerId, playerName: 'Jugador' })
+    socket.emit('create-room', {}, (data) => {
+        if (data.success) {
+            currentRoomCode = data.roomCode;
+            showRoomUI(data.roomCode, true);
+            console.log('✓ Sala creada:', data.roomCode);
+        }
     });
-    
-    const data = await response.json();
-    currentRoomCode = data.roomCode;
-    
-    showRoomUI(data.roomCode, true);
-    console.log('Sala creada:', data.roomCode);
 }
 
 // --- UNIRSE A SALA ---
@@ -58,46 +80,29 @@ async function joinRoom() {
     const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
     
     if (!roomCode) {
-        alert('Ingresa el código de sala');
+        alert('Ingresa código de sala');
         return;
     }
     
-    updateStatus('Conectando a sala...');
+    updateStatus('Conectando...');
     
-    try {
-        const response = await fetch('/api/join-room', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomCode, peerId: myPeerId })
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-            updateStatus('Error al unirse a sala');
-            return;
+    socket.emit('join-room', { roomCode }, (data) => {
+        if (data.success) {
+            currentRoomCode = roomCode;
+            
+            console.log('✓ Unido a sala:', roomCode);
+            console.log('✓ Conectando con host:', data.hostId);
+            
+            // Conectar con PeerJS al host
+            conn = peer.connect(data.hostId);
+            setupConnection();
+            
+            showRoomUI(roomCode, false);
+        } else {
+            alert('Error: ' + data.error);
+            updateStatus('Error');
         }
-        
-        const data = await response.json();
-        currentRoomCode = roomCode;
-        
-        console.log('Conectando con host:', data.hostId);
-        
-        // Conectar con el host
-        conn = peer.connect(data.hostId, { reliable: true });
-        
-        conn.on('error', (err) => {
-            console.error('Error al conectar:', err);
-            updateStatus('❌ Error: No se pudo conectar con el host');
-        });
-        
-        setupConnection();
-        showRoomUI(roomCode, false);
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error de red');
-        updateStatus('Error de conexión');
-    }
+    });
 }
 
 // --- UI DE SALA ---
@@ -110,8 +115,8 @@ function showRoomUI(roomCode, isHost) {
                     ${roomCode}
                 </p>
             </div>
-            ${isHost ? '<p>Comparte este código con tu amigo</p>' : '<p>Conectando con el host...</p>'}
-            <button onclick="leaveRoom()" class="btn-danger" style="margin-top: 1rem;">Salir</button>
+            <p id="connection-status">Esperando conexión P2P...</p>
+            <button onclick="leaveRoom()" class="btn-danger">Salir</button>
         </div>
     `;
 }
@@ -125,27 +130,28 @@ function showJoinRoomForm() {
 // --- SALIR DE SALA ---
 function leaveRoom() {
     if (conn) conn.close();
-    conn = null;
-    currentRoomCode = null;
-    myRole = null;
-    gameActive = false;
+    socket.emit('disconnect');
     location.reload();
 }
 
 // --- CONFIGURAR CONEXIÓN P2P ---
 function setupConnection() {
     conn.on('open', () => {
-        console.log('✓ Conexión P2P establecida');
-        document.getElementById('rooms-screen').classList.add('hidden');
-        document.getElementById('setup-screen').classList.remove('hidden');
-        updateStatus('¡Conectado! Elige tu rol.');
+        console.log('✓ Conexión P2P ESTABLECIDA');
+        document.getElementById('connection-status').innerText = '✓ Conectado!';
+        
+        setTimeout(() => {
+            document.getElementById('rooms-screen').classList.add('hidden');
+            document.getElementById('setup-screen').classList.remove('hidden');
+            updateStatus('¡Conectado! Elige rol.');
+        }, 500);
     });
 
     conn.on('data', (data) => {
         if (data.type === 'move') {
             thiefPos = data.pos;
             turn = 'detective';
-            updateStatus('¡Ladrón escondido! Tu turno 🕵️‍♂️');
+            updateStatus('¡Ladrón escondido! Tu turno 🕵️');
         } 
         else if (data.type === 'guess') {
             const dist = calculateDistance(data.index, thiefPos);
@@ -155,7 +161,7 @@ function setupConnection() {
                 updateStatus('¡ATRAPADO! 😱');
                 gameActive = false;
             } else {
-                updateStatus(`Falló (distancia: ${dist})`);
+                updateStatus(`Falló (${dist})`);
                 turn = 'thief';
             }
         }
@@ -166,18 +172,17 @@ function setupConnection() {
                 gameActive = false;
             } else {
                 updateStatus(`Distancia: ${data.dist}`);
-                turn = 'thief';
             }
         }
     });
 
     conn.on('error', (err) => {
-        console.error('❌ Error en conexión:', err);
-        updateStatus('Error en la conexión P2P');
+        console.error('❌ Error P2P:', err);
+        updateStatus('Error en conexión');
     });
 
     conn.on('close', () => {
-        console.log('⚠️ Conexión cerrada');
+        console.log('✗ Conexión P2P cerrada');
         updateStatus('Conexión perdida');
     });
 }
@@ -185,7 +190,7 @@ function setupConnection() {
 // --- ELEGIR ROL ---
 function chooseRole(role) {
     if (!conn || !conn.open) {
-        alert('No hay conexión');
+        alert('No hay conexión con otro jugador');
         return;
     }
     
@@ -225,7 +230,7 @@ function handleCellClick(idx) {
         document.querySelector(`[data-index="${idx}"]`).classList.add('thief-here');
         conn.send({ type: 'move', pos: idx });
         turn = 'detective';
-        updateStatus('¡Escondido! Espera disparo...');
+        updateStatus('¡Escondido!');
     } 
     else if (myRole === 'detective' && turn === 'detective') {
         conn.send({ type: 'guess', index: idx });
@@ -234,7 +239,7 @@ function handleCellClick(idx) {
     }
 }
 
-// --- DISTANCIA ---
+// --- DISTANCIA (Manhattan) ---
 function calculateDistance(idx1, idx2) {
     const x1 = idx1 % 4, y1 = Math.floor(idx1 / 4);
     const x2 = idx2 % 4, y2 = Math.floor(idx2 / 4);
