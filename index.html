@@ -11,17 +11,35 @@
     <div id="game-ui">
         <header>
             <h1>🕵️‍♂️ Invisible Thief</h1>
-            <div id="connection-status">
-                <p>Tu ID: <span id="my-id">Cargando...</span></p>
-                <div class="input-group">
-                    <input type="text" id="remote-id" placeholder="ID de tu amigo">
-                    <button onclick="connectToFriend()">🔌 Conectar</button>
-                </div>
-            </div>
+            <p id="my-id-display" class="my-id-display">Tu ID: <span id="my-id">Cargando...</span></p>
         </header>
 
         <main>
-            <div id="setup-screen">
+            <!-- PANTALLA DE SALAS -->
+            <div id="rooms-screen">
+                <h2>Salas Disponibles</h2>
+                <div class="room-options">
+                    <button class="btn-large" onclick="createRoom()">➕ Crear Nueva Sala</button>
+                    <button class="btn-large" onclick="showJoinRoomForm()">🔍 Unirse a Sala</button>
+                </div>
+
+                <div id="join-room-form" class="hidden">
+                    <h3>Únete a una Sala</h3>
+                    <div class="input-group">
+                        <input type="text" id="room-code" placeholder="Código de sala (ej: ABC123)">
+                        <button onclick="joinRoom()">Entrar</button>
+                    </div>
+                </div>
+
+                <div id="active-room" class="hidden">
+                    <h3>Sala Activa: <span id="room-id-display">---</span></h3>
+                    <p>Esperando al otro jugador...</p>
+                    <button onclick="leaveRoom()" class="btn-danger">Salir de Sala</button>
+                </div>
+            </div>
+
+            <!-- PANTALLA DE ROL -->
+            <div id="setup-screen" class="hidden">
                 <h2>Elige tu rol</h2>
                 <div class="role-selection">
                     <button class="btn-role thief" onclick="chooseRole('thief')">🥷 Ladrón</button>
@@ -29,6 +47,7 @@
                 </div>
             </div>
 
+            <!-- PANTALLA DE JUEGO -->
             <div id="game-screen" class="hidden">
                 <div class="stats-bar">
                     <span id="player-role-badge">---</span>
@@ -36,6 +55,7 @@
                 </div>
                 <div id="board" class="grid"></div>
                 <div id="log"></div>
+                <button onclick="leaveRoom()" class="btn-danger">Salir del Juego</button>
             </div>
         </main>
     </div>
