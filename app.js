@@ -9,6 +9,7 @@ let turn = 'thief';
 let gameActive = false;
 let currentRoomCode = null;
 let otherPlayerId = null;
+let boardSize = 16; // Por defecto 4x4
 
 // --- CONEXIÓN ---
 socket.on('connect', () => {
@@ -42,8 +43,8 @@ socket.on('player-ready', (data) => {
     
     setTimeout(() => {
         document.getElementById('rooms-screen').classList.add('hidden');
-        document.getElementById('setup-screen').classList.remove('hidden');
-        updateStatus('¡Conexión establecida! Elige tu rol.');
+        document.getElementById('board-size-screen').classList.remove('hidden');
+        updateStatus('Elige el tamaño del tablero');
     }, 500);
 });
 
@@ -65,6 +66,7 @@ socket.on('player-guess', (data) => {
     if (dist === 0) {
         updateStatus('¡ATRAPADO! 😱');
         gameActive = false;
+        showEndGameScreen('¡Ladrón atrapado!', '¡El detective te encontró! 😱');
     } else {
         updateStatus(`Falló (${dist})`);
         turn = 'thief';
@@ -76,6 +78,7 @@ socket.on('guess-result', (data) => {
     if (data.dist === 0) {
         updateStatus('¡GANASTE! 🎉');
         gameActive = false;
+        showEndGameScreen('¡Detectivé ganó!', '¡Has atrapado al ladrón! 🎉');
     } else {
         updateStatus(`Distancia: ${data.dist}`);
         turn = 'thief';
@@ -148,12 +151,34 @@ function chooseRole(role) {
     createBoard();
 }
 
+// --- ELEGIR TAMAÑO DE TABLERO ---
+function chooseBoardSize(size) {
+    const sizeMap = { 'small': 16, 'medium': 36, 'large': 64 };
+    boardSize = sizeMap[size];
+    
+    document.getElementById('board-size-screen').classList.add('hidden');
+    document.getElementById('setup-screen').classList.remove('hidden');
+    updateStatus('¡Elige tu rol!');
+    
+    // Notificar al otro jugador el tamaño
+    socket.emit('board-size', { 
+        roomCode: currentRoomCode, 
+        boardSize: boardSize 
+    });
+}
+
+socket.on('board-size', (data) => {
+    boardSize = data.boardSize;
+    console.log('Tamaño de tablero:', boardSize);
+});
+
 // --- CREAR TABLERO ---
 function createBoard() {
     const board = document.getElementById('board');
     board.innerHTML = '';
+    board.style.gridTemplateColumns = `repeat(${Math.sqrt(boardSize)}, 1fr)`;
     
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < boardSize; i++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.dataset.index = i;
@@ -192,8 +217,9 @@ function handleCellClick(idx) {
 
 // --- DISTANCIA ---
 function calculateDistance(idx1, idx2) {
-    const x1 = idx1 % 4, y1 = Math.floor(idx1 / 4);
-    const x2 = idx2 % 4, y2 = Math.floor(idx2 / 4);
+    const cols = Math.sqrt(boardSize);
+    const x1 = idx1 % cols, y1 = Math.floor(idx1 / cols);
+    const x2 = idx2 % cols, y2 = Math.floor(idx2 / cols);
     return Math.abs(x1 - x2) + Math.abs(y1 - y2);
 }
 
@@ -208,4 +234,34 @@ function showGuessResult(idx, dist) {
 function updateStatus(msg) {
     const el = document.getElementById('game-status');
     if (el) el.innerText = msg;
+}
+
+// --- VOLVER A JUGAR ---
+function playAgain() {
+    myRole = null;
+    thiefPos = null;
+    turn = 'thief';
+    gameActive = false;
+    
+    document.getElementById('game-screen').classList.add('hidden');
+    document.getElementById('end-game-screen').classList.add('hidden');
+    document.getElementById('board-size-screen').classList.remove('hidden');
+    document.getElementById('board').innerHTML = '';
+    
+    updateStatus('Elige tamaño de tablero');
+    socket.emit('play-again', { roomCode: currentRoomCode });
+}
+
+socket.on('play-again', () => {
+    playAgain();
+});
+
+// --- PANTALLA DE FIN DE JUEGO ---
+function showEndGameScreen(title, message) {
+    setTimeout(() => {
+        document.getElementById('game-screen').classList.add('hidden');
+        document.getElementById('end-game-screen').classList.remove('hidden');
+        document.getElementById('end-game-title').innerText = title;
+        document.getElementById('end-game-message').innerText = message;
+    }, 1000);
 }

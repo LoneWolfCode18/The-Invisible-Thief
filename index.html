@@ -38,6 +38,16 @@
                 </div>
             </div>
 
+            <!-- PANTALLA DE TAMAÑO DE TABLERO -->
+            <div id="board-size-screen" class="hidden">
+                <h2>Elige el Tamaño del Tablero</h2>
+                <div class="board-size-options">
+                    <button class="btn-large" onclick="chooseBoardSize('small')">🟦 4×4 (16 casillas)</button>
+                    <button class="btn-large" onclick="chooseBoardSize('medium')">🟩 6×6 (36 casillas)</button>
+                    <button class="btn-large" onclick="chooseBoardSize('large')">🟪 8×8 (64 casillas)</button>
+                </div>
+            </div>
+
             <!-- PANTALLA DE ROL -->
             <div id="setup-screen" class="hidden">
                 <h2>Elige tu rol</h2>
@@ -56,6 +66,16 @@
                 <div id="board" class="grid"></div>
                 <div id="log"></div>
                 <button onclick="leaveRoom()" class="btn-danger">Salir del Juego</button>
+            </div>
+
+            <!-- PANTALLA DE FIN DE JUEGO -->
+            <div id="end-game-screen" class="hidden">
+                <h2 id="end-game-title">¡Fin del Juego!</h2>
+                <p id="end-game-message">---</p>
+                <div class="end-game-buttons">
+                    <button class="btn-large" onclick="playAgain()">🔄 Volver a Jugar</button>
+                    <button class="btn-danger" onclick="leaveRoom()">🚪 Salir de Sala</button>
+                </div>
             </div>
         </main>
     </div>

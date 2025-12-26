@@ -141,6 +141,35 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Tamaño del tablero
+    socket.on('board-size', (data) => {
+        const { roomCode, boardSize } = data;
+        const room = rooms[roomCode];
+        
+        if (room) {
+            room.boardSize = boardSize;
+            room.players.forEach(playerId => {
+                if (playerId !== socket.id) {
+                    io.to(playerId).emit('board-size', { boardSize });
+                }
+            });
+        }
+    });
+
+    // Volver a jugar
+    socket.on('play-again', (data) => {
+        const { roomCode } = data;
+        const room = rooms[roomCode];
+        
+        if (room) {
+            room.players.forEach(playerId => {
+                if (playerId !== socket.id) {
+                    io.to(playerId).emit('play-again', {});
+                }
+            });
+        }
+    });
+
     // Salir de sala
     socket.on('leave-room', (data) => {
         const { roomCode } = data;
